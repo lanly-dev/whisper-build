@@ -1,73 +1,87 @@
-name: Build whisper.cpp
+name: Whisper.cpp Builder
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        cmake_build_type: [Release]
-
-        include:
-          - os: ubuntu-latest
-            cc: gcc
-            cpp: g++
-          - os: windows-latest
-            cc: cl
-            cpp: cl
-          - os: macos-latest
-            cc: clang
-            cpp: clang++
-
-    name: Build (${{ matrix.os }})
-
+  whisper:
+    runs-on: ${{ inputs.os }}
     steps:
-      - name: Checkout whisper.cpp
-        uses: actions/checkout@v4
+      # --- LINUX STEP ---
+      - name: Build Whisper for Linux
+        if: inputs.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential cmake git pkg-config
+          git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
+          cd whisper.cpp
+          cmake -B build -DCMAKE_INSTALL_PREFIX="$HOME/whisper_target" -DBUILD_SHARED_LIBS=OFF
+          cmake --build build -j"$(nproc)"
+          cmake --install build
+          # Verify.pc was installed
+          echo "=== Installed files ==="
+          find "$HOME/whisper_target" -name "*.pc" 2>/dev/null || true
+          ls -la "$HOME/whisper_target/lib/pkgconfig/" 2>/dev/null || ls -la "$HOME/whisper_target/lib64/pkgconfig/" 2>/dev/null || echo "No pkgconfig dir found"
+
+      # --- MACOS STEP ---
+      - name: Build Whisper for macOS
+        if: inputs.os == 'macos-latest'
+        shell: bash
+        run: |
+          brew update && brew install cmake git pkg-config
+          git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
+          cd whisper.cpp
+          cmake -B build -DCMAKE_INSTALL_PREFIX="$HOME/whisper_target" -DBUILD_SHARED_LIBS=OFF
+          cmake --build build -j"$(sysctl -n hw.logicalcpu)"
+          cmake --install build
+          echo "=== Installed files ==="
+          find "$HOME/whisper_target" -name "*.pc" 2>/dev/null || true
+          ls -la "$HOME/whisper_target/lib/pkgconfig/" 2>/dev/null || ls -la "$HOME/whisper_target/lib64/pkgconfig/" 2>/dev/null || echo "No pkgconfig dir found"
+
+      # --- WINDOWS STEP ---
+      - name: Setup MSYS2 for Windows
+        if: inputs.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
         with:
-          repository: ggerganov/whisper.cpp
-          path: whisper.cpp
+          msystem: MINGW64
+          update: true
+          install: base-devel git mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ncurses
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Build Whisper for Windows
+        if: inputs.os == 'windows-latest'
+        shell: msys2 {0}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake git
+          git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
+          cd whisper.cpp
+          cmake -B build -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX="$PWD/../whisper_target" -DBUILD_SHARED_LIBS=OFF
+          cmake --build build -j"$(nproc)"
+          cmake --install build
+          echo "=== Installed files ==="
+          find "$PWD/../whisper_target" -name "*.pc" 2>/dev/null || true
+          ls -la "$PWD/../whisper_target/lib/pkgconfig/" 2>/dev/null || ls -la "$PWD/../whisper_target/lib/pkgconfig/" 2>/dev/null || echo "No pkgconfig dir found"
 
-      - name: Install dependencies (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install cmake
-
-      - name: Configure CMake (Windows)
-        if: matrix.os == 'windows-latest'
-        working-directory: whisper.cpp
-        run: |
-          mkdir build
-          cd build
-          cmake -G "Visual Studio 17 2022" -A x64 ..
-
-      - name: Configure CMake (Unix)
-        if: matrix.os != 'windows-latest'
-        working-directory: whisper.cpp
-        run: |
-          mkdir build
-          cd build
-          cmake -DCMAKE_BUILD_TYPE=${{ matrix.cmake_build_type }} ..
-
-      - name: Build whisper.cpp
-        working-directory: whisper.cpp/build
-        run: cmake --build . --config ${{ matrix.cmake_build_type }}
-
-      - name: Upload binary
+      # --- ARTIFACT UPLOADS ---
+      - name: Upload Linux Artifacts
+        if: inputs.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-bin-${{ matrix.os }}
-          path: whisper.cpp/build/bin/
+          name: whisper-compiled-ubuntu-latest
+          path: /home/runner/whisper_target/
+
+      - name: Upload macOS Artifacts
+        if: inputs.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-compiled-macos-latest
+          path: /Users/runner/whisper_target/
+
+      - name: Upload Windows Artifacts
+        if: inputs.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-compiled-windows-latest
+          path: whisper_target/
