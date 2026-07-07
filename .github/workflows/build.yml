@@ -108,17 +108,14 @@ jobs:
           tar czf whisper_install-darwin-universal.tar.gz whisper_target/
           ls -lh whisper_install-darwin-universal.tar.gz
 
-      - name: Package Windows install tree (zip)
+      - name: Package Windows install tree
         if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
         shell: msys2 {0}
         run: |
           cd "$(cygpath -u "${{ github.workspace }}")"
           ls -la whisper_target/
-          # Use zip instead of tar.gz for Windows
-          cd whisper_target
-          zip -r ../whisper_install-windows-x86_64.zip .
-          cd ..
-          ls -lh whisper_install-windows-x86_64.zip
+          tar czf whisper_install-windows-x86_64.tar.gz whisper_target/
+          ls -lh whisper_install-windows-x86_64.tar.gz
 
       # --- ARTIFACT UPLOADS ---
       - name: Upload Linux Install Tree
@@ -169,15 +166,15 @@ jobs:
         run: |
           # Get current date in YYYY.MM.DD format
           DATE=$(date +%Y.%m.%d)
-          
+
           # Get last 3-char whisper commit suffix
           WHISPER_LAST3="${{ steps.whisper_commit.outputs.WHISPER_LAST3 }}"
-          
+
           # Count total existing releases for this repo (global increment)
           TOTAL_TAGS=$(gh api repos/${{ github.repository }}/tags --jq '. | length' 2>/dev/null || echo "0")
-          
+
           INCREMENT=$(printf '%04d' $TOTAL_TAGS)
-          
+
           TAG_NAME="v${DATE}-${WHISPER_LAST3}-${INCREMENT}"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
