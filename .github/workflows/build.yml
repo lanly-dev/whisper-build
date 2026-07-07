@@ -52,9 +52,26 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
           cd whisper.cpp
-          cmake -B build -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX="$PWD/../whisper_target" -DBUILD_SHARED_LIBS=OFF
+          cmake -B build -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX="$PWD/whisper_target" -DBUILD_SHARED_LIBS=OFF
           cmake --build build -j"$(nproc)"
           cmake --install build
+
+      # --- LIST ACTUAL INSTALLED FILES ---
+      - name: List installed files (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          find /home/runner/whisper_target -type f | head -50
+
+      - name: List installed files (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          find /Users/runner/whisper_target -type f | head -50
+
+      - name: List installed files (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          find whisper.cpp/../whisper_target -type f | head -50
 
       # --- CREATE INSTALL-LIKE TREE FOR ffmpeg CONSUMPTION ---
       # Structure: whisper_install/
@@ -68,41 +85,44 @@ jobs:
         run: |
           cd /home/runner
           tar czf whisper_install-linux-x86_64.tar.gz whisper_target/
+          ls -lh whisper_install-linux-x86_64.tar.gz
 
       - name: Package macOS install tree
         if: matrix.os == 'macos-latest'
         run: |
           cd /Users/runner
           tar czf whisper_install-darwin-universal.tar.gz whisper_target/
+          ls -lh whisper_install-darwin-universal.tar.gz
 
       - name: Package Windows install tree
         if: matrix.os == 'windows-latest'
-        shell: cmd
+        shell: msys2 {0}
         run: |
-          cd C:\Users\Runner
-          tar czf whisper_install-windows-x86_64.tar.gz whisper_target/
+          cd whisper.cpp
+          tar czf ../whisper_install-windows-x86_64.tar.gz -C .. whisper_target/
+          ls -lh ../whisper_install-windows-x86_64.tar.gz
 
       # --- ARTIFACT UPLOADS ---
       - name: Upload Linux Install Tree
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v8
         with:
           name: whisper_install-linux-x86_64
           path: /home/runner/whisper_install-linux-x86_64.tar.gz
 
       - name: Upload macOS Install Tree
         if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v8
         with:
           name: whisper_install-darwin-universal
           path: /Users/runner/whisper_install-darwin-universal.tar.gz
 
       - name: Upload Windows Install Tree
         if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v8
         with:
           name: whisper_install-windows-x86_64
-          path: C:\Users\Runner\whisper_install-windows-x86_64.tar.gz
+          path: whisper.cpp/whisper_install-windows-x86_64.tar.gz
 
   # --- RELEASE JOB ---
   release:
@@ -116,19 +136,19 @@ jobs:
         run: mkdir -p release
 
       - name: Download Linux Install Tree
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: whisper_install-linux-x86_64
           path: release
 
       - name: Download macOS Install Tree
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: whisper_install-darwin-universal
           path: release
 
       - name: Download Windows Install Tree
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: whisper_install-windows-x86_64
           path: release
