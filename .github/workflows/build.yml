@@ -24,10 +24,6 @@ jobs:
           cmake -B build -DCMAKE_INSTALL_PREFIX="$HOME/whisper_target" -DBUILD_SHARED_LIBS=OFF
           cmake --build build -j"$(nproc)"
           cmake --install build
-          # Verify.pc was installed
-          echo "=== Installed files ==="
-          find "$HOME/whisper_target" -name "*.pc" 2>/dev/null || true
-          ls -la "$HOME/whisper_target/lib/pkgconfig/" 2>/dev/null || ls -la "$HOME/whisper_target/lib64/pkgconfig/" 2>/dev/null || echo "No pkgconfig dir found"
 
       # --- MACOS STEP ---
       - name: Build Whisper for macOS
@@ -40,9 +36,6 @@ jobs:
           cmake -B build -DCMAKE_INSTALL_PREFIX="$HOME/whisper_target" -DBUILD_SHARED_LIBS=OFF
           cmake --build build -j"$(sysctl -n hw.logicalcpu)"
           cmake --install build
-          echo "=== Installed files ==="
-          find "$HOME/whisper_target" -name "*.pc" 2>/dev/null || true
-          ls -la "$HOME/whisper_target/lib/pkgconfig/" 2>/dev/null || ls -la "$HOME/whisper_target/lib64/pkgconfig/" 2>/dev/null || echo "No pkgconfig dir found"
 
       # --- WINDOWS STEP ---
       - name: Setup MSYS2 for Windows
@@ -62,31 +55,28 @@ jobs:
           cmake -B build -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX="$PWD/../whisper_target" -DBUILD_SHARED_LIBS=OFF
           cmake --build build -j"$(nproc)"
           cmake --install build
-          echo "=== Installed files ==="
-          find "$PWD/../whisper_target" -name "*.pc" 2>/dev/null || true
-          ls -la "$PWD/../whisper_target/lib/pkgconfig/" 2>/dev/null || ls -la "$PWD/../whisper_target/lib/pkgconfig/" 2>/dev/null || echo "No pkgconfig dir found"
 
-      # --- ARTIFACT UPLOADS ---
-      - name: Upload Linux Artifacts
+      # --- UPLOAD PC FILES TO RELEASE ---
+      - name: Upload Linux .pc file
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-compiled-ubuntu-latest
-          path: /home/runner/whisper_target/
+          name: whisper-linux.pc
+          path: /home/runner/whisper_target/lib/pkgconfig/whisper.cpp.pc
 
-      - name: Upload macOS Artifacts
+      - name: Upload macOS .pc file
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-compiled-macos-latest
-          path: /Users/runner/whisper_target/
+          name: whisper-macos.pc
+          path: /Users/runner/whisper_target/lib/pkgconfig/whisper.cpp.pc
 
-      - name: Upload Windows Artifacts
+      - name: Upload Windows .pc file
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-compiled-windows-latest
-          path: whisper_target/
+          name: whisper-windows.pc
+          path: C:/Users/Runner/whisper_target/lib/pkgconfig/whisper.cpp.pc
 
   # --- RELEASE JOB ---
   release:
@@ -96,37 +86,34 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download Linux Artifacts
+      - name: Create release dir
+        run: mkdir -p release
+
+      - name: Download Linux .pc file
         uses: actions/download-artifact@v4
         with:
-          name: whisper-compiled-ubuntu-latest
-          path: release/linux
+          name: whisper-linux.pc
+          path: release
 
-      - name: Download macOS Artifacts
+      - name: Download macOS .pc file
         uses: actions/download-artifact@v4
         with:
-          name: whisper-compiled-macos-latest
-          path: release/macos
+          name: whisper-macos.pc
+          path: release
 
-      - name: Download Windows Artifacts
+      - name: Download Windows .pc file
         uses: actions/download-artifact@v4
         with:
-          name: whisper-compiled-windows-latest
-          path: release/windows
-
-      - name: List downloaded files
-        run: find release/ -type f
+          name: whisper-windows.pc
+          path: release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_id }}
-          name: Whisper.cpp Build ${{ github.sha }}
+          name: Whisper.cpp pkg-config files ${{ github.sha }}
           generate_release_notes: true
           files: |
-            release/linux/*
-            release/macos/*
-            release/windows/*
-          fail_on_unmatched_files: false
+            release/*.pc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
