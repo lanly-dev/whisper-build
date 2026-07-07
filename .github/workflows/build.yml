@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  schedule:
+    # Run at 00:00 UTC on the first day of every month
+    - cron: '0 0 1 * *'
 
 jobs:
   whisper:
@@ -18,7 +21,7 @@ jobs:
 
       # --- LINUX STEP ---
       - name: Build Whisper for Linux
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' || github.event_name == 'schedule'
         shell: bash
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential cmake git pkg-config
@@ -31,7 +34,7 @@ jobs:
 
       # --- MACOS STEP ---
       - name: Build Whisper for macOS
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' || github.event_name == 'schedule'
         shell: bash
         run: |
           brew update && brew install cmake git pkg-config
@@ -44,7 +47,7 @@ jobs:
 
       # --- WINDOWS STEP ---
       - name: Setup MSYS2 for Windows
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -52,7 +55,7 @@ jobs:
           install: base-devel git mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ncurses
 
       - name: Build Whisper for Windows
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
         shell: msys2 {0}
         run: |
           cd "$(cygpath -u "${{ github.workspace }}")"
@@ -65,35 +68,30 @@ jobs:
 
       # --- LIST INSTALLED FILES FOR DEBUGGING ---
       - name: List installed files (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' || github.event_name == 'schedule'
         shell: bash
         run: |
           echo "=== Installed files ==="
           find "${{ github.workspace }}/whisper_target" -type f 2>/dev/null || echo "whisper_target not found!"
 
       - name: List installed files (macOS)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' || github.event_name == 'schedule'
         shell: bash
         run: |
           echo "=== Installed files ==="
           find "${{ github.workspace }}/whisper_target" -type f 2>/dev/null || echo "whisper_target not found!"
 
       - name: List installed files (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
         shell: msys2 {0}
         run: |
           echo "=== Installed files ==="
           find "$(cygpath -u "${{ github.workspace }}/whisper_target")" -type f 2>/dev/null | head -50 || echo "whisper_target not found!"
 
       # --- CREATE INSTALL-LIKE TREE FOR ffmpeg CONSUMPTION ---
-      # Structure: whisper_install/
-      #   include/whisper.h ... (headers)
-      #   lib/libwhisper.a     (static library)
-      #   lib/pkgconfig/whisper.cpp.pc
-      #   lib/cmake/Whisper/WhisperConfig.cmake
 
       - name: Package Linux install tree
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' || github.event_name == 'schedule'
         shell: bash
         run: |
           cd ${{ github.workspace }}
@@ -102,7 +100,7 @@ jobs:
           ls -lh whisper_install-linux-x86_64.tar.gz
 
       - name: Package macOS install tree
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' || github.event_name == 'schedule'
         shell: bash
         run: |
           cd ${{ github.workspace }}
@@ -110,47 +108,78 @@ jobs:
           tar czf whisper_install-darwin-universal.tar.gz whisper_target/
           ls -lh whisper_install-darwin-universal.tar.gz
 
-      - name: Package Windows install tree
-        if: matrix.os == 'windows-latest'
+      - name: Package Windows install tree (zip)
+        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
         shell: msys2 {0}
         run: |
           cd "$(cygpath -u "${{ github.workspace }}")"
           ls -la whisper_target/
-          tar czf whisper_install-windows-x86_64.tar.gz whisper_target/
-          ls -lh whisper_install-windows-x86_64.tar.gz
+          # Use zip instead of tar.gz for Windows
+          cd whisper_target
+          zip -r ../whisper_install-windows-x86_64.zip .
+          cd ..
+          ls -lh whisper_install-windows-x86_64.zip
 
       # --- ARTIFACT UPLOADS ---
       - name: Upload Linux Install Tree
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' || github.event_name == 'schedule'
         uses: actions/upload-artifact@v4
         with:
           name: whisper_install-linux-x86_64
           path: ${{ github.workspace }}/whisper_install-linux-x86_64.tar.gz
 
       - name: Upload macOS Install Tree
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' || github.event_name == 'schedule'
         uses: actions/upload-artifact@v4
         with:
           name: whisper_install-darwin-universal
           path: ${{ github.workspace }}/whisper_install-darwin-universal.tar.gz
 
       - name: Upload Windows Install Tree
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
         uses: actions/upload-artifact@v4
         with:
           name: whisper_install-windows-x86_64
-          path: ${{ github.workspace }}/whisper_install-windows-x86_64.tar.gz
+          path: ${{ github.workspace }}/whisper_install-windows-x86_64.zip
 
-  # --- RELEASE JOB ---
+  # --- RELEASE JOB (on push to main/master or schedule) ---
   release:
     needs: whisper
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
       - name: Create release dir
         run: mkdir -p release
+
+      - name: Get whisper.cpp commit hash (last 3 chars)
+        id: whisper_commit
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git /tmp/whisper_comm
+          WHISPER_LAST3=$(cd /tmp/whisper_comm && git rev-parse --short=3 HEAD)
+          echo "WHISPER_LAST3=$WHISPER_LAST3" >> $GITHUB_OUTPUT
+
+      - name: Count existing releases total for global increment
+        id: tag
+        shell: bash
+        run: |
+          # Get current date in YYYY.MM.DD format
+          DATE=$(date +%Y.%m.%d)
+          
+          # Get last 3-char whisper commit suffix
+          WHISPER_LAST3="${{ steps.whisper_commit.outputs.WHISPER_LAST3 }}"
+          
+          # Count total existing releases for this repo (global increment)
+          TOTAL_TAGS=$(gh api repos/${{ github.repository }}/tags --jq '. | length' 2>/dev/null || echo "0")
+          
+          INCREMENT=$(printf '%04d' $TOTAL_TAGS)
+          
+          TAG_NAME="v${DATE}-${WHISPER_LAST3}-${INCREMENT}"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
       - name: Download Linux Install Tree
         uses: actions/download-artifact@v4
@@ -173,10 +202,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_id }}
-          name: Whisper.cpp Install Tree ${{ github.sha }}
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: Whisper.cpp Install Tree ${{ steps.tag.outputs.tag_name }}
           generate_release_notes: true
           files: |
-            release/*.tar.gz
+            release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
