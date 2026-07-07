@@ -17,7 +17,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # --- LINUX STEP ---
       - name: Build Whisper for Linux
@@ -137,7 +137,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: whisper_install-windows-x86_64
-          path: ${{ github.workspace }}/whisper_install-windows-x86_64.zip
+          path: ${{ github.workspace }}/whisper_install-windows-x86_64.tar.gz
 
   # --- RELEASE JOB (on push to main/master or schedule) ---
   release:
