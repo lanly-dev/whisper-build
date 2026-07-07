@@ -56,27 +56,53 @@ jobs:
           cmake --build build -j"$(nproc)"
           cmake --install build
 
-      # --- UPLOAD PC FILES TO RELEASE ---
-      - name: Upload Linux .pc file
+      # --- CREATE INSTALL-LIKE TREE FOR ffmpeg CONSUMPTION ---
+      # Structure: whisper_install/
+      #   include/whisper.h ... (headers)
+      #   lib/libwhisper.a     (static library)
+      #   lib/pkgconfig/whisper.cpp.pc
+      #   lib/cmake/Whisper/WhisperConfig.cmake
+
+      - name: Package Linux install tree
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd /home/runner
+          tar czf whisper_install-linux-x86_64.tar.gz whisper_target/
+
+      - name: Package macOS install tree
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd /Users/runner
+          tar czf whisper_install-darwin-universal.tar.gz whisper_target/
+
+      - name: Package Windows install tree
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: |
+          cd C:\Users\Runner
+          tar czf whisper_install-windows-x86_64.tar.gz whisper_target/
+
+      # --- ARTIFACT UPLOADS ---
+      - name: Upload Linux Install Tree
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-linux.pc
-          path: /home/runner/whisper_target/lib/pkgconfig/whisper.cpp.pc
+          name: whisper_install-linux-x86_64
+          path: /home/runner/whisper_install-linux-x86_64.tar.gz
 
-      - name: Upload macOS .pc file
+      - name: Upload macOS Install Tree
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-macos.pc
-          path: /Users/runner/whisper_target/lib/pkgconfig/whisper.cpp.pc
+          name: whisper_install-darwin-universal
+          path: /Users/runner/whisper_install-darwin-universal.tar.gz
 
-      - name: Upload Windows .pc file
+      - name: Upload Windows Install Tree
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-windows.pc
-          path: C:/Users/Runner/whisper_target/lib/pkgconfig/whisper.cpp.pc
+          name: whisper_install-windows-x86_64
+          path: C:\Users\Runner\whisper_install-windows-x86_64.tar.gz
 
   # --- RELEASE JOB ---
   release:
@@ -89,31 +115,31 @@ jobs:
       - name: Create release dir
         run: mkdir -p release
 
-      - name: Download Linux .pc file
+      - name: Download Linux Install Tree
         uses: actions/download-artifact@v4
         with:
-          name: whisper-linux.pc
+          name: whisper_install-linux-x86_64
           path: release
 
-      - name: Download macOS .pc file
+      - name: Download macOS Install Tree
         uses: actions/download-artifact@v4
         with:
-          name: whisper-macos.pc
+          name: whisper_install-darwin-universal
           path: release
 
-      - name: Download Windows .pc file
+      - name: Download Windows Install Tree
         uses: actions/download-artifact@v4
         with:
-          name: whisper-windows.pc
+          name: whisper_install-windows-x86_64
           path: release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_id }}
-          name: Whisper.cpp pkg-config files ${{ github.sha }}
+          name: Whisper.cpp Install Tree ${{ github.sha }}
           generate_release_notes: true
           files: |
-            release/*.pc
+            release/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
