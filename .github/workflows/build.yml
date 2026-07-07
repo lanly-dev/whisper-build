@@ -118,21 +118,15 @@ jobs:
         run: find release/ -type f
 
       - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_id }}
+          name: Whisper.cpp Build ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            release/linux/*
+            release/macos/*
+            release/windows/*
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="v${GITHUB_RUN_ID}"
-          echo "Creating tag: $TAG"
-
-          # Create release using GitHub CLI
-          gh release create "$TAG" \
-            --title "Whisper.cpp Build ${GITHUB_SHA::8}" \
-            --generate-notes \
-            release/linux/* release/macos/* release/windows/* 2>&1 || {
-              echo "Release creation failed, trying without notes..."
-              gh release create "$TAG" \
-                --title "Whisper.cpp Build ${GITHUB_SHA::8}" \
-                release/linux/* release/macos/* release/windows/* 2>&1
-            }
-
-          echo "Release created: https://github.com/${{ github.repository }}/releases/tag/$TAG"
