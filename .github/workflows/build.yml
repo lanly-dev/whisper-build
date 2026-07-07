@@ -55,10 +55,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          cd ${{ github.workspace }}
+          cd "$(cygpath -u "${{ github.workspace }}")"
           git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
           cd whisper.cpp
-          cmake -B build -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/whisper_target" -DBUILD_SHARED_LIBS=OFF
+          INSTALL_PREFIX="$(cygpath -u "${{ github.workspace }}/whisper_target")"
+          cmake -B build -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" -DBUILD_SHARED_LIBS=OFF
           cmake --build build -j"$(nproc)"
           cmake --install build
 
@@ -82,7 +83,7 @@ jobs:
         shell: msys2 {0}
         run: |
           echo "=== Installed files ==="
-          find "${{ github.workspace }}/whisper_target" -type f 2>/dev/null | head -50 || echo "whisper_target not found!"
+          find "$(cygpath -u "${{ github.workspace }}/whisper_target")" -type f 2>/dev/null | head -50 || echo "whisper_target not found!"
 
       # --- CREATE INSTALL-LIKE TREE FOR ffmpeg CONSUMPTION ---
       # Structure: whisper_install/
@@ -113,7 +114,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
-          cd ${{ github.workspace }}
+          cd "$(cygpath -u "${{ github.workspace }}")"
           ls -la whisper_target/
           tar czf whisper_install-windows-x86_64.tar.gz whisper_target/
           ls -lh whisper_install-windows-x86_64.tar.gz
