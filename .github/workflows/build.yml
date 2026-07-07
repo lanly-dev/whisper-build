@@ -5,19 +5,17 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
-  workflow_call:
-    inputs:
-      os:
-        required: true
-        type: string
 
 jobs:
   whisper:
-    runs-on: ${{ inputs.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       # --- LINUX STEP ---
       - name: Build Whisper for Linux
-        if: inputs.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential cmake git pkg-config
@@ -33,7 +31,7 @@ jobs:
 
       # --- MACOS STEP ---
       - name: Build Whisper for macOS
-        if: inputs.os == 'macos-latest'
+        if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           brew update && brew install cmake git pkg-config
@@ -48,7 +46,7 @@ jobs:
 
       # --- WINDOWS STEP ---
       - name: Setup MSYS2 for Windows
-        if: inputs.os == 'windows-latest'
+        if: matrix.os == 'windows-latest'
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -56,7 +54,7 @@ jobs:
           install: base-devel git mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ncurses
 
       - name: Build Whisper for Windows
-        if: inputs.os == 'windows-latest'
+        if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
           git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
@@ -70,21 +68,21 @@ jobs:
 
       # --- ARTIFACT UPLOADS ---
       - name: Upload Linux Artifacts
-        if: inputs.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: whisper-compiled-ubuntu-latest
           path: /home/runner/whisper_target/
 
       - name: Upload macOS Artifacts
-        if: inputs.os == 'macos-latest'
+        if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: whisper-compiled-macos-latest
           path: /Users/runner/whisper_target/
 
       - name: Upload Windows Artifacts
-        if: inputs.os == 'windows-latest'
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: whisper-compiled-windows-latest
