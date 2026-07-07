@@ -93,47 +93,46 @@ jobs:
     needs: whisper
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download Linux Artifacts
         uses: actions/download-artifact@v4
         with:
           name: whisper-compiled-ubuntu-latest
-          path: release/linux/
+          path: release/linux
 
       - name: Download macOS Artifacts
         uses: actions/download-artifact@v4
         with:
           name: whisper-compiled-macos-latest
-          path: release/macos/
+          path: release/macos
 
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v4
         with:
           name: whisper-compiled-windows-latest
-          path: release/windows/
+          path: release/windows
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ github.run_id }}
-          name: Whisper.cpp Build ${{ github.sha }}
-          body: |
-            Automated build of whisper.cpp for Linux, macOS, and Windows.
+      - name: List downloaded files
+        run: find release/ -type f
 
-            **Build Details:**
-            - Commit: ${{ github.sha }}
-            - Triggered by: push to main
-            - Date: ${{ github.event.head_commit.timestamp }}
-
-            **Artifacts:**
-            - `linux/` — Ubuntu LTS (GCC/Clang)
-            - `macos/` — macOS (Clang)
-            - `windows/` — Windows (MSYS2 MinGW64)
-          files: |
-            release/linux/*
-            release/macos/*
-            release/windows/*
-          draft: false
-          prerelease: false
+      - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${GITHUB_RUN_ID}"
+          echo "Creating tag: $TAG"
+
+          # Create release using GitHub CLI
+          gh release create "$TAG" \
+            --title "Whisper.cpp Build ${GITHUB_SHA::8}" \
+            --generate-notes \
+            release/linux/* release/macos/* release/windows/* 2>&1 || {
+              echo "Release creation failed, trying without notes..."
+              gh release create "$TAG" \
+                --title "Whisper.cpp Build ${GITHUB_SHA::8}" \
+                release/linux/* release/macos/* release/windows/* 2>&1
+            }
+
+          echo "Release created: https://github.com/${{ github.repository }}/releases/tag/$TAG"
