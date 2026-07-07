@@ -105,21 +105,21 @@ jobs:
       # --- ARTIFACT UPLOADS ---
       - name: Upload Linux Install Tree
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v7
         with:
           name: whisper_install-linux-x86_64
           path: /home/runner/whisper_install-linux-x86_64.tar.gz
 
       - name: Upload macOS Install Tree
         if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v7
         with:
           name: whisper_install-darwin-universal
           path: /Users/runner/whisper_install-darwin-universal.tar.gz
 
       - name: Upload Windows Install Tree
         if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v7
         with:
           name: whisper_install-windows-x86_64
           path: whisper.cpp/whisper_install-windows-x86_64.tar.gz
@@ -136,19 +136,19 @@ jobs:
         run: mkdir -p release
 
       - name: Download Linux Install Tree
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: whisper_install-linux-x86_64
           path: release
 
       - name: Download macOS Install Tree
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: whisper_install-darwin-universal
           path: release
 
       - name: Download Windows Install Tree
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: whisper_install-windows-x86_64
           path: release
