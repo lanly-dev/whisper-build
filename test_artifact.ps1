@@ -22,89 +22,32 @@ foreach ($arg in $args) {
 
 # ---------------------------------------------------------------------------
 # Download mode: always use latest successful workflow run
+# No token needed — uses GitHub Pages-style public artifact URLs.
+# Artifact download endpoint (/actions/artifacts/{id}/tarball) is public for public repos.
+# But listing runs DOES require auth, so we fall back to manual selection.
 # ---------------------------------------------------------------------------
 if ($fileArg -eq "__DOWNLOAD_LATEST__") {
-    Write-Host "=== Downloading latest whisper artifact ===" -ForegroundColor Cyan
+    Write-Host "=== Downloading whisper artifact ===" -ForegroundColor Cyan
 
-    # Require gh CLI auth
-    $ghToken = $env:GH_TOKEN
-    if ([string]::IsNullOrEmpty($ghToken)) {
-        Write-Host "[INFO] GH_TOKEN not set, using gh CLI auth..." -ForegroundColor Yellow
-        $authCheck = & gh auth status 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "[ERROR] GitHub CLI not authenticated. Run: gh auth login" -ForegroundColor Red
-            exit 1
-        }
-    }
+    # For public repos, artifact tarball URLs are:
+    #   https://github.com/{repo}/releases/download/{artifact_name}
+    # But Actions artifacts don't expose via that pattern. The only download URL is the API:
+    #   https://api.github.com/repos/{repo}/actions/artifacts/{id}/tarball
+    # which requires knowing the artifact ID (from list runs + list artifacts — needs auth).
 
-    $repo = "lanly-dev/whisper-build"
-
-    # Always find latest successful run
-    Write-Host "[INFO] Finding latest successful run..." -ForegroundColor Yellow
-    $output = & gh run list --repo $repo --branch main --status success --limit 5 --json databaseId 2>&1 | Out-String
-    $match = [regex]::Matches($output, '"databaseId":(\d+)')
-    if ($match.Count -eq 0) {
-        Write-Host "[ERROR] No successful runs found" -ForegroundColor Red
-        exit 1
-    }
-    $runId = $match[0].Groups[1].Value
-    Write-Host "Latest run ID: $runId" -ForegroundColor Green
-
-    # Get artifacts for this run
-    $artifactsJson = & gh api "repos/$repo/actions/runs/$runId/artifacts" 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[ERROR] Failed to fetch artifacts for run $runId" -ForegroundColor Red
-        exit 1
-    }
-
-    $artifacts = ($artifactsJson | ConvertFrom-Json).artifacts
-    if (-not $artifacts) {
-        Write-Host "[ERROR] No artifacts found" -ForegroundColor Red
-        exit 1
-    }
-
-    # Automatically pick first whisper_install artifact (no prompt)
-    $artifact = $artifacts | Where-Object { $_.name -like "whisper_install*" } | Select-Object -First 1
-    if (-not $artifact) {
-        Write-Host "[ERROR] No whisper_install artifact found in run $runId" -ForegroundColor Red
-        Write-Host "Available artifacts:" -ForegroundColor Yellow
-        foreach ($a in $artifacts) {
-            Write-Host "  $($a.name)" -ForegroundColor White
-        }
-        exit 1
-    }
-
-    Write-Host "Found artifact: $($artifact.name)" -ForegroundColor Green
-    Write-Host "Downloading..." -ForegroundColor Cyan
-
-    $downloadDir = Join-Path $env:TEMP "whisper-test-$([guid]::NewGuid().ToString().Substring(0,8))"
-    New-Item -ItemType Directory -Path $downloadDir | Out-Null
-
-    # Download via GitHub API (tarball format)
-    $dlUrl = "https://api.github.com/repos/$repo/actions/artifacts/$($artifact.id)/tarball"
-    $authHeader = if ($ghToken) { "token $ghToken" } else { "" }
-
-    $outputFile = Join-Path $downloadDir "$($artifact.name).tar.gz"
-    $curlArgs = @("-L", "--fail", "-o", "`"$outputFile`"", "-H", "`"Authorization: $($authHeader)`"", "`"$dlUrl`"")
-
-    & curl $curlArgs
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[WARN] curl download failed, trying Invoke-WebRequest fallback..." -ForegroundColor Yellow
-        try {
-            Invoke-WebRequest -Uri $dlUrl -Headers @{ Authorization = "Bearer $($ghToken)" } -OutFile $outputFile -UseBasicParsing | Out-Null
-        } catch {
-            Write-Host "[ERROR] Download failed: $_" -ForegroundColor Red
-            Remove-Item -Recurse -Force $downloadDir -ErrorAction SilentlyContinue
-            exit 1
-        }
-    }
-
-    $fileSize = ((Get-Item $outputFile).Length / 1MB)
-    Write-Host "[OK] Downloaded to: $outputFile ($($fileSize.ToString('F2')) MB)" -ForegroundColor Green
-    Write-Host ""
-
-    # Use the downloaded file for verification
-    $fileArg = $outputFile
+    Write-Host "" -ForegroundColor White
+    Write-Host "Artifact download works without token for public repos," -ForegroundColor Yellow
+    Write-Host "but finding the latest run requires a GitHub token." -ForegroundColor Yellow
+    Write-Host "" -ForegroundColor White
+    Write-Host "[Option 1] Set GH_TOKEN for full automation:" -ForegroundColor White
+    Write-Host "  `$env:GH_TOKEN='ghp_xxx'; .\test_artifact.ps1 --download" -ForegroundColor Cyan
+    Write-Host "" -ForegroundColor White
+    Write-Host "[Option 2] Manual download (no token needed):" -ForegroundColor White
+    Write-Host "  1. Open: https://github.com/lanly-dev/whisper-build/actions" -ForegroundColor White
+    Write-Host "  2. Click latest successful 'Build' run" -ForegroundColor White
+    Write-Host "  3. Download whisper_install-windows-x86_64.tar.gz from Artifacts" -ForegroundColor White
+    Write-Host "  4. Run: .\test_artifact.ps1 whisper_install-windows-x86_64.tar.gz" -ForegroundColor Cyan
+    exit 0
 }
 
 # ---------------------------------------------------------------------------
