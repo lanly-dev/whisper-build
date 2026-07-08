@@ -21,7 +21,7 @@ jobs:
 
       # --- LINUX STEP ---
       - name: Build Whisper for Linux
-        if: matrix.os == 'ubuntu-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           sudo apt-get update && sudo apt-get install -y build-essential cmake git pkg-config
@@ -34,7 +34,7 @@ jobs:
 
       # --- MACOS STEP ---
       - name: Build Whisper for macOS
-        if: matrix.os == 'macos-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           brew update && brew install cmake git pkg-config
@@ -47,7 +47,7 @@ jobs:
 
       # --- WINDOWS STEP ---
       - name: Setup MSYS2 for Windows
-        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'windows-latest'
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -55,7 +55,7 @@ jobs:
           install: base-devel git mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ncurses
 
       - name: Build Whisper for Windows
-        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
           cd "$(cygpath -u "${{ github.workspace }}")"
@@ -72,74 +72,165 @@ jobs:
             case "$base" in lib*) ;; *) cp "$lib" "$INSTALL_PREFIX/lib/lib${base}" ;; esac
           done
 
+      # --- FIX INSTALL TREE ---
+      # whisper.cpp's CMake install has two issues:
+      # 1. ggml libs are installed without the 'lib' prefix (e.g. ggml.a instead of libggml.a)
+      #    MinGW's linker requires the 'lib' prefix to resolve -lggml flags in whisper.pc
+      # 2. whisper.pc may not list all ggml static libs needed for static linking
+      # We fix both here so downstream consumers (like FFmpeg) can link correctly.
+
+      - name: Fix install tree (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}/whisper_target/lib"
+          # Add lib prefix to any .a files missing it
+          for lib in *.a; do
+            case "$lib" in lib*) ;; *) cp "$lib" "lib${lib}" ;; esac
+          done
+          # Regenerate whisper.pc with all ggml libs
+          GGML_LIBS=""
+          for lib in ggml ggml-base ggml-cpu ggml-alloc ggml-backend; do
+            [ -f "lib${lib}.a" ] && GGML_LIBS="$GGML_LIBS -l${lib}"
+          done
+          {
+            echo 'prefix=${pcfiledir}/../..'
+            echo 'exec_prefix=${prefix}'
+            echo 'libdir=${prefix}/lib'
+            echo 'includedir=${prefix}/include'
+            echo
+            echo 'Name: whisper'
+            echo "Description: Port of OpenAI's Whisper model in C/C++"
+            echo 'Version: 1.9.1'
+            echo "Libs: -L\${libdir} -lwhisper$GGML_LIBS"
+            echo 'Libs.private: -lstdc++ -lm -lpthread'
+            echo 'Cflags: -I${includedir}'
+          } > pkgconfig/whisper.pc
+
+      - name: Fix install tree (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}/whisper_target/lib"
+          # Add lib prefix to any .a files missing it
+          for lib in *.a; do
+            case "$lib" in lib*) ;; *) cp "$lib" "lib${lib}" ;; esac
+          done
+          # Regenerate whisper.pc with all ggml libs
+          GGML_LIBS=""
+          for lib in ggml ggml-base ggml-cpu ggml-alloc ggml-backend ggml-metal; do
+            [ -f "lib${lib}.a" ] && GGML_LIBS="$GGML_LIBS -l${lib}"
+          done
+          {
+            echo 'prefix=${pcfiledir}/../..'
+            echo 'exec_prefix=${prefix}'
+            echo 'libdir=${prefix}/lib'
+            echo 'includedir=${prefix}/include'
+            echo
+            echo 'Name: whisper'
+            echo "Description: Port of OpenAI's Whisper model in C/C++"
+            echo 'Version: 1.9.1'
+            echo "Libs: -L\${libdir} -lwhisper$GGML_LIBS"
+            echo 'Libs.private: -lstdc++ -lm -lpthread -framework Accelerate -framework Foundation -framework Metal -framework MetalKit'
+            echo 'Cflags: -I${includedir}'
+          } > pkgconfig/whisper.pc
+
+      - name: Fix install tree (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          cd "$(cygpath -u "${{ github.workspace }}/whisper_target")/lib"
+          # Add lib prefix to any .a files missing it
+          for lib in *.a; do
+            case "$lib" in lib*) ;; *) cp "$lib" "lib${lib}" ;; esac
+          done
+          # Regenerate whisper.pc with all ggml libs
+          GGML_LIBS=""
+          for lib in ggml ggml-base ggml-cpu ggml-alloc ggml-backend; do
+            [ -f "lib${lib}.a" ] && GGML_LIBS="$GGML_LIBS -l${lib}"
+          done
+          {
+            echo 'prefix=${pcfiledir}/../..'
+            echo 'exec_prefix=${prefix}'
+            echo 'libdir=${prefix}/lib'
+            echo 'includedir=${prefix}/include'
+            echo
+            echo 'Name: whisper'
+            echo "Description: Port of OpenAI's Whisper model in C/C++"
+            echo 'Version: 1.9.1'
+            echo "Libs: -L\${libdir} -lwhisper$GGML_LIBS"
+            echo 'Libs.private: -lstdc++ -lm -lpthread'
+            echo 'Cflags: -I${includedir}'
+          } > pkgconfig/whisper.pc
+
       # --- LIST INSTALLED FILES FOR DEBUGGING ---
       - name: List installed files (Linux)
-        if: matrix.os == 'ubuntu-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           echo "=== Installed files ==="
           find "${{ github.workspace }}/whisper_target" -type f 2>/dev/null || echo "whisper_target not found!"
+          echo "=== whisper.pc ==="
+          cat "${{ github.workspace }}/whisper_target/lib/pkgconfig/whisper.pc"
 
       - name: List installed files (macOS)
-        if: matrix.os == 'macos-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           echo "=== Installed files ==="
           find "${{ github.workspace }}/whisper_target" -type f 2>/dev/null || echo "whisper_target not found!"
+          echo "=== whisper.pc ==="
+          cat "${{ github.workspace }}/whisper_target/lib/pkgconfig/whisper.pc"
 
       - name: List installed files (Windows)
-        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
           echo "=== Installed files ==="
           find "$(cygpath -u "${{ github.workspace }}/whisper_target")" -type f 2>/dev/null | head -50 || echo "whisper_target not found!"
+          echo "=== whisper.pc ==="
+          cat "$(cygpath -u "${{ github.workspace }}/whisper_target")/lib/pkgconfig/whisper.pc"
 
       # --- CREATE INSTALL-LIKE TREE FOR ffmpeg CONSUMPTION ---
 
       - name: Package Linux install tree
-        if: matrix.os == 'ubuntu-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           cd ${{ github.workspace }}
-          ls -la whisper_target/
           tar czf whisper_install-linux-x86_64.tar.gz whisper_target/
-          ls -lh whisper_install-linux-x86_64.tar.gz
 
       - name: Package macOS install tree
-        if: matrix.os == 'macos-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           cd ${{ github.workspace }}
-          ls -la whisper_target/
           tar czf whisper_install-darwin-universal.tar.gz whisper_target/
-          ls -lh whisper_install-darwin-universal.tar.gz
 
       - name: Package Windows install tree
-        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: |
           cd "$(cygpath -u "${{ github.workspace }}")"
-          ls -la whisper_target/
           tar czf whisper_install-windows-x86_64.tar.gz whisper_target/
-          ls -lh whisper_install-windows-x86_64.tar.gz
 
       # --- ARTIFACT UPLOADS ---
       - name: Upload Linux Install Tree
-        if: matrix.os == 'ubuntu-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: whisper_install-linux-x86_64
           path: ${{ github.workspace }}/whisper_install-linux-x86_64.tar.gz
 
       - name: Upload macOS Install Tree
-        if: matrix.os == 'macos-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: whisper_install-darwin-universal
           path: ${{ github.workspace }}/whisper_install-darwin-universal.tar.gz
 
       - name: Upload Windows Install Tree
-        if: matrix.os == 'windows-latest' || github.event_name == 'schedule'
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: whisper_install-windows-x86_64
@@ -155,6 +246,11 @@ jobs:
     outputs:
       tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Checkout repo
         uses: actions/checkout@v7
 
