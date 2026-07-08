@@ -1,9 +1,9 @@
 # Test whisper.cpp install tree artifact
-# Usage: .\test_artifact.ps1 [--download] <artifact.tar.gz>
+# Usage: .\test_artifact.ps1 [--download] [<artifact.tar.gz>]
 #
 # Examples:
 #   .\test_artifact.ps1 whisper_install-windows-x86_64.tar.gz       (verify local file)
-#   .\test_artifact.ps1 --download                                    (always download latest + verify)
+#   .\test_artifact.ps1 --download                                    (download latest release + verify)
 
 $ErrorActionPreference = "Continue"
 
@@ -21,42 +21,77 @@ foreach ($arg in $args) {
 }
 
 # ---------------------------------------------------------------------------
-# Download mode: always use latest successful workflow run
-# No token needed — uses GitHub Pages-style public artifact URLs.
-# Artifact download endpoint (/actions/artifacts/{id}/tarball) is public for public repos.
-# But listing runs DOES require auth, so we fall back to manual selection.
+# Download mode: use latest GitHub Release to find artifacts
+# Releases are created automatically by the workflow for each build.
+# No token needed for public repo releases. For private repos, set GH_TOKEN.
 # ---------------------------------------------------------------------------
 if ($fileArg -eq "__DOWNLOAD_LATEST__") {
-    Write-Host "=== Downloading whisper artifact ===" -ForegroundColor Cyan
+    Write-Host "=== Downloading whisper artifact from latest release ===" -ForegroundColor Cyan
 
-    # For public repos, artifact tarball URLs are:
-    #   https://github.com/{repo}/releases/download/{artifact_name}
-    # But Actions artifacts don't expose via that pattern. The only download URL is the API:
-    #   https://api.github.com/repos/{repo}/actions/artifacts/{id}/tarball
-    # which requires knowing the artifact ID (from list runs + list artifacts — needs auth).
+    # Get latest release tag (no auth needed for public repos)
+    try {
+        $headers = @{}
+        if ($env:GH_TOKEN) {
+            $headers["Authorization"] = "token $env:GH_TOKEN"
+        }
+        
+        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/lanly-dev/whisper-build/releases/latest" `
+            -Headers $headers -ErrorAction Stop
+        
+        $releaseTag = $response.tag_name
+        Write-Host "  Latest release: $releaseTag" -ForegroundColor Green
+    } catch {
+        Write-Host "  [ERROR] Failed to fetch latest release." -ForegroundColor Red
+        if ($env:GH_TOKEN) {
+            Write-Host "  Check token permissions or use a valid token." -ForegroundColor Yellow
+        } else {
+            Write-Host "  Set GH_TOKEN for private repos:" -ForegroundColor Yellow
+            Write-Host "  `$env:GH_TOKEN='your_token'" -ForegroundColor Cyan
+        }
+        exit 1
+    }
 
-    Write-Host "" -ForegroundColor White
-    Write-Host "Artifact download works without token for public repos," -ForegroundColor Yellow
-    Write-Host "but finding the latest run requires a GitHub token." -ForegroundColor Yellow
-    Write-Host "" -ForegroundColor White
-    Write-Host "[Option 1] Set GH_TOKEN for full automation:" -ForegroundColor White
-    Write-Host "  `$env:GH_TOKEN='ghp_xxx'; .\test_artifact.ps1 --download" -ForegroundColor Cyan
-    Write-Host "" -ForegroundColor White
-    Write-Host "[Option 2] Manual download (no token needed):" -ForegroundColor White
-    Write-Host "  1. Open: https://github.com/lanly-dev/whisper-build/actions" -ForegroundColor White
-    Write-Host "  2. Click latest successful 'Build' run" -ForegroundColor White
-    Write-Host "  3. Download whisper_install-windows-x86_64.tar.gz from Artifacts" -ForegroundColor White
-    Write-Host "  4. Run: .\test_artifact.ps1 whisper_install-windows-x86_64.tar.gz" -ForegroundColor Cyan
-    exit 0
+    # List available artifacts in this release
+    $artifacts = $response.assets | Where-Object { $_.name -like 'whisper_install*' } | ForEach-Object { $_.name }
+    
+    if (-not $artifacts) {
+        Write-Host "  [ERROR] No whisper_install artifacts found in release $releaseTag." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Host "  Available artifacts:" -ForegroundColor White
+    foreach ($art in $artifacts) {
+        Write-Host "    - $art" -ForegroundColor Gray
+    }
+    Write-Host ""
+
+    # Platform detection for Windows is straightforward
+    $artifactName = "whisper_install-windows-x86_64.tar.gz"
+    $tmpDir = New-Item -ItemType Directory -Path ([System.IO.Path]::GetTempPath()) -Name "whisper-test-$((New-Guid).ToString().Substring(0,8))"
+    
+    Write-Host "  Downloading $artifactName ..." -ForegroundColor Cyan
+    try {
+        $downloadUrl = "https://github.com/lanly-dev/whisper-build/releases/download/${releaseTag}/${artifactName}"
+        Invoke-WebRequest -Uri $downloadUrl -OutFile "$tmpDir/$artifactName" -ErrorAction Stop
+        Write-Host "  Downloaded: $tmpDir\$artifactName" -ForegroundColor Green
+    } catch {
+        Write-Host "  [ERROR] Failed to download artifact." -ForegroundColor Red
+        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+        exit 1
+    }
+    
+    $fileArg = "$tmpDir\$artifactName"
+    Write-Host ""
 }
 
 # ---------------------------------------------------------------------------
 # Verify artifact structure
 # ---------------------------------------------------------------------------
 if ([string]::IsNullOrEmpty($fileArg) -or -not (Test-Path $fileArg)) {
-    Write-Host "Usage: .\test_artifact.ps1 [--download] <artifact.tar.gz>" -ForegroundColor Red
+    Write-Host "Usage: .\test_artifact.ps1 [--download] [<artifact.tar.gz>]" -ForegroundColor Red
     Write-Host "" -ForegroundColor White
-    Write-Host "  --download          Download latest artifact from GitHub Actions (auto)" -ForegroundColor White
+    Write-Host "  --download          Download latest artifact from GitHub Release (auto)" -ForegroundColor White
     Write-Host "  <file>              Verify a local artifact file" -ForegroundColor White
     exit 1
 }
