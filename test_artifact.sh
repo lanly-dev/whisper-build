@@ -74,19 +74,17 @@ if [[ "$ARTIFACT" == "__DOWNLOAD_LATEST__" ]]; then
         esac
         
         ARTIFACT_NAME="whisper_install-${PLATFORM}.tar.gz"
-        TMPDIR=$(mktemp -d)
-        trap 'rm -rf "$TMPDIR"' EXIT
         
-        echo "  Downloading $ARTIFACT_NAME ..."
+        echo "  Downloading $ARTIFACT_NAME to $(pwd) ..."
         curl -sL "https://github.com/lanly-dev/whisper-build/releases/download/${RELEASE_TAG}/${ARTIFACT_NAME}" \
-            -o "$TMPDIR/$ARTIFACT_NAME"
+            -o "./$ARTIFACT_NAME"
         
-        if [[ $? -ne 0 || ! -f "$TMPDIR/$ARTIFACT_NAME" ]]; then
+        if [[ $? -ne 0 || ! -f "./$ARTIFACT_NAME" ]]; then
             echo "  [ERROR] Failed to download artifact."
             exit 1
         fi
         
-        ARTIFACT="$TMPDIR/$ARTIFACT_NAME"
+        ARTIFACT="./$ARTIFACT_NAME"
         echo "  Downloaded: $ARTIFACT"
     else
         echo "  curl not found. Install curl or download manually:"

@@ -68,20 +68,18 @@ if ($fileArg -eq "__DOWNLOAD_LATEST__") {
 
     # Platform detection for Windows is straightforward
     $artifactName = "whisper_install-windows-x86_64.tar.gz"
-    $tmpDir = New-Item -ItemType Directory -Path ([System.IO.Path]::GetTempPath()) -Name "whisper-test-$((New-Guid).ToString().Substring(0,8))"
     
-    Write-Host "  Downloading $artifactName ..." -ForegroundColor Cyan
+    Write-Host "  Downloading $artifactName to $(Get-Location) ..." -ForegroundColor Cyan
     try {
         $downloadUrl = "https://github.com/lanly-dev/whisper-build/releases/download/${releaseTag}/${artifactName}"
-        Invoke-WebRequest -Uri $downloadUrl -OutFile "$tmpDir/$artifactName" -ErrorAction Stop
-        Write-Host "  Downloaded: $tmpDir\$artifactName" -ForegroundColor Green
+        Invoke-WebRequest -Uri $downloadUrl -OutFile ".\$artifactName" -ErrorAction Stop
+        Write-Host "  Downloaded: .\$artifactName" -ForegroundColor Green
     } catch {
         Write-Host "  [ERROR] Failed to download artifact." -ForegroundColor Red
-        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
         exit 1
     }
     
-    $fileArg = "$tmpDir\$artifactName"
+    $fileArg = ".\$artifactName"
     Write-Host ""
 }
 
