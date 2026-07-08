@@ -65,6 +65,12 @@ jobs:
           cmake -B build -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" -DBUILD_SHARED_LIBS=OFF
           cmake --build build -j"$(nproc)"
           cmake --install build
+          # ggml libraries are installed without the 'lib' prefix (e.g. ggml.a instead
+          # of libggml.a). MinGW's linker requires the 'lib' prefix for -l flags.
+          for lib in "$INSTALL_PREFIX/lib"/*.a; do
+            base=$(basename "$lib")
+            case "$base" in lib*) ;; *) cp "$lib" "$INSTALL_PREFIX/lib/lib${base}" ;; esac
+          done
 
       # --- LIST INSTALLED FILES FOR DEBUGGING ---
       - name: List installed files (Linux)
